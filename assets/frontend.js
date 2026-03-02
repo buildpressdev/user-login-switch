@@ -24,6 +24,12 @@
     return String(url).replace(/&amp;/g, '&');
   }
 
+  function withRedirect(url) {
+    var normalized = normalizeUrl(url);
+    var separator = normalized.indexOf('?') === -1 ? '?' : '&';
+    return normalized + separator + 'redirect_to=' + encodeURIComponent(window.location.href);
+  }
+
   function setOpen(open) {
     modal.hidden = !open;
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -59,7 +65,7 @@
 
       var link = document.createElement('a');
       link.className = 'uls-widget__list-link';
-      link.href = normalizeUrl(user.switch_url);
+      link.href = withRedirect(user.switch_url);
 
       var name = document.createElement('span');
       name.className = 'uls-widget__name';

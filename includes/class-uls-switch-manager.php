@@ -227,6 +227,7 @@ class ULS_Switch_Manager {
 		}
 
 		$target_user_id = isset( $_GET['target_user'] ) ? absint( $_GET['target_user'] ) : 0;
+		$redirect_to    = isset( $_GET['redirect_to'] ) ? esc_url_raw( wp_unslash( $_GET['redirect_to'] ) ) : '';
 		check_admin_referer( 'uls_switch_' . $target_user_id );
 
 		$origin_user_id = get_current_user_id();
@@ -259,7 +260,10 @@ class ULS_Switch_Manager {
 		$this->track_recent_target( $origin_user_id, $target_user_id );
 		$this->audit_log->log( 'switch_started', 'success', $origin_user_id, $target_user_id, 'Switch successful.' );
 
-		wp_safe_redirect( admin_url( 'profile.php?uls_switched=1' ) );
+		$default_redirect = admin_url( 'profile.php?uls_switched=1' );
+		$safe_redirect    = wp_validate_redirect( $redirect_to, $default_redirect );
+
+		wp_safe_redirect( $safe_redirect );
 		exit;
 	}
 
