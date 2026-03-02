@@ -11,6 +11,8 @@ class ULS_Settings {
 		return array(
 			'enabled'               => 1,
 			'timeout_minutes'       => 120,
+			'enable_guest_quick_login' => 0,
+			'guest_quick_login_ttl' => 5,
 			'show_users_row_action' => 1,
 			'show_admin_bar'        => 1,
 			'show_admin_notice'     => 1,
@@ -49,6 +51,8 @@ class ULS_Settings {
 		$output = array(
 			'enabled'               => ! empty( $input['enabled'] ) ? 1 : 0,
 			'timeout_minutes'       => max( 5, min( 1440, absint( $input['timeout_minutes'] ?? $defaults['timeout_minutes'] ) ) ),
+			'enable_guest_quick_login' => ! empty( $input['enable_guest_quick_login'] ) ? 1 : 0,
+			'guest_quick_login_ttl' => max( 1, min( 60, absint( $input['guest_quick_login_ttl'] ?? $defaults['guest_quick_login_ttl'] ) ) ),
 			'show_users_row_action' => ! empty( $input['show_users_row_action'] ) ? 1 : 0,
 			'show_admin_bar'        => ! empty( $input['show_admin_bar'] ) ? 1 : 0,
 			'show_admin_notice'     => ! empty( $input['show_admin_notice'] ) ? 1 : 0,

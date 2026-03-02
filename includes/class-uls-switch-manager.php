@@ -20,12 +20,41 @@ class ULS_Switch_Manager {
 	public function register() {
 		add_action( 'admin_post_uls_switch', array( $this, 'handle_switch' ) );
 		add_action( 'admin_post_uls_return', array( $this, 'handle_return' ) );
+		add_action( 'admin_post_uls_quick_login', array( $this, 'handle_guest_quick_login' ) );
+		add_action( 'admin_post_nopriv_uls_quick_login', array( $this, 'handle_guest_quick_login' ) );
 		add_action( 'wp_ajax_uls_search_users', array( $this, 'ajax_search_users' ) );
 		add_action( 'clear_auth_cookie', array( $this, 'handle_logout_cleanup' ) );
 	}
 
 	public function is_enabled() {
 		return (bool) $this->settings->get( 'enabled' );
+	}
+
+	public function is_guest_quick_login_enabled() {
+		if ( ! $this->is_enabled() ) {
+			return false;
+		}
+
+		if ( ! $this->settings->get( 'enable_guest_quick_login' ) ) {
+			return false;
+		}
+
+		return $this->is_guest_quick_login_environment_allowed();
+	}
+
+	public function is_guest_quick_login_environment_allowed() {
+		$environment = function_exists( 'wp_get_environment_type' ) ? wp_get_environment_type() : 'production';
+		$allowed     = in_array( $environment, array( 'local', 'development', 'staging' ), true );
+
+		if ( 'production' === $environment && defined( 'ULS_ALLOW_PRODUCTION_QUICK_LOGIN' ) && constant( 'ULS_ALLOW_PRODUCTION_QUICK_LOGIN' ) ) {
+			$allowed = true;
+		}
+
+		return (bool) apply_filters( 'uls_allow_guest_quick_login_environment', $allowed, $environment );
+	}
+
+	public function quick_login_environment_label() {
+		return function_exists( 'wp_get_environment_type' ) ? wp_get_environment_type() : 'production';
 	}
 
 	public function can_initiate_switch( $user_id = 0 ) {
@@ -50,6 +79,60 @@ class ULS_Switch_Manager {
 		}
 
 		return in_array( 'administrator', (array) $user->roles, true );
+	}
+
+	public function can_be_quick_login_target( $user_id ) {
+		$user_id = absint( $user_id );
+
+		if ( ! $user_id ) {
+			return false;
+		}
+
+		$user = get_user_by( 'id', $user_id );
+
+		if ( ! $user ) {
+			return false;
+		}
+
+		if ( is_super_admin( $user_id ) ) {
+			return true;
+		}
+
+		if ( ! user_can( $user, 'manage_options' ) ) {
+			return false;
+		}
+
+		return in_array( 'administrator', (array) $user->roles, true );
+	}
+
+	public function generate_quick_login_url( $user_id, $ttl_minutes = 0, $requested_by = 0 ) {
+		$user_id = absint( $user_id );
+
+		if ( ! $this->can_be_quick_login_target( $user_id ) ) {
+			return '';
+		}
+
+		$default_ttl = absint( $this->settings->get( 'guest_quick_login_ttl' ) );
+		$ttl_minutes = $ttl_minutes ? absint( $ttl_minutes ) : $default_ttl;
+		$ttl_minutes = max( 1, min( 60, $ttl_minutes ) );
+
+		$token   = wp_generate_password( 48, false, false );
+		$payload = array(
+			'user_id'      => $user_id,
+			'requested_by' => absint( $requested_by ),
+			'blog_id'      => get_current_blog_id(),
+			'expires_at'   => time() + ( MINUTE_IN_SECONDS * $ttl_minutes ),
+		);
+
+		set_transient( $this->quick_login_key( $token ), $payload, MINUTE_IN_SECONDS * $ttl_minutes );
+
+		return add_query_arg(
+			array(
+				'action'    => 'uls_quick_login',
+				'uls_token' => rawurlencode( $token ),
+			),
+			admin_url( 'admin-post.php' )
+		);
 	}
 
 	public function target_role_allowed( $target_user_id ) {
@@ -210,6 +293,63 @@ class ULS_Switch_Manager {
 		exit;
 	}
 
+	public function handle_guest_quick_login() {
+		if ( ! $this->is_guest_quick_login_enabled() ) {
+			$this->audit_log->log( 'quick_login_failed', 'denied', 0, null, 'Guest quick login disabled.' );
+			wp_die( esc_html__( 'Quick login is disabled for this environment.', 'user-login-switch' ) );
+		}
+
+		$token = isset( $_GET['uls_token'] ) ? sanitize_text_field( wp_unslash( $_GET['uls_token'] ) ) : '';
+
+		if ( ! $token ) {
+			$this->audit_log->log( 'quick_login_failed', 'invalid', 0, null, 'Missing token.' );
+			wp_die( esc_html__( 'Invalid quick login link.', 'user-login-switch' ) );
+		}
+
+		$key     = $this->quick_login_key( $token );
+		$payload = get_transient( $key );
+
+		if ( ! is_array( $payload ) ) {
+			$this->audit_log->log( 'quick_login_failed', 'invalid', 0, null, 'Token not found.' );
+			wp_die( esc_html__( 'Quick login link is invalid or already used.', 'user-login-switch' ) );
+		}
+
+		delete_transient( $key );
+
+		if ( empty( $payload['expires_at'] ) || time() > absint( $payload['expires_at'] ) ) {
+			$this->audit_log->log( 'quick_login_failed', 'expired', absint( $payload['requested_by'] ?? 0 ), absint( $payload['user_id'] ?? 0 ), 'Token expired.' );
+			wp_die( esc_html__( 'Quick login link has expired.', 'user-login-switch' ) );
+		}
+
+		if ( absint( $payload['blog_id'] ?? 0 ) !== get_current_blog_id() ) {
+			$this->audit_log->log( 'quick_login_failed', 'invalid', absint( $payload['requested_by'] ?? 0 ), absint( $payload['user_id'] ?? 0 ), 'Blog mismatch.' );
+			wp_die( esc_html__( 'Quick login link is invalid for this site.', 'user-login-switch' ) );
+		}
+
+		$target_user_id = absint( $payload['user_id'] ?? 0 );
+
+		if ( ! $this->can_be_quick_login_target( $target_user_id ) ) {
+			$this->audit_log->log( 'quick_login_failed', 'invalid', absint( $payload['requested_by'] ?? 0 ), $target_user_id, 'Target user invalid.' );
+			wp_die( esc_html__( 'Quick login target account is invalid.', 'user-login-switch' ) );
+		}
+
+		$target_user = get_user_by( 'id', $target_user_id );
+
+		if ( ! $target_user ) {
+			$this->audit_log->log( 'quick_login_failed', 'invalid', absint( $payload['requested_by'] ?? 0 ), $target_user_id, 'User lookup failed.' );
+			wp_die( esc_html__( 'Quick login target account is invalid.', 'user-login-switch' ) );
+		}
+
+		wp_set_auth_cookie( $target_user_id, false, is_ssl() );
+		wp_set_current_user( $target_user_id );
+		do_action( 'wp_login', $target_user->user_login, $target_user );
+
+		$this->audit_log->log( 'quick_login_success', 'success', absint( $payload['requested_by'] ?? 0 ), $target_user_id, 'Quick login success.' );
+
+		wp_safe_redirect( admin_url() );
+		exit;
+	}
+
 	private function create_switch_token( $origin_user_id, $target_user_id ) {
 		$expires_at = time() + ( absint( $this->settings->get( 'timeout_minutes' ) ) * MINUTE_IN_SECONDS );
 
@@ -314,6 +454,10 @@ class ULS_Switch_Manager {
 
 	private function transient_key( $token ) {
 		return 'uls_token_' . md5( $token );
+	}
+
+	private function quick_login_key( $token ) {
+		return 'uls_quick_' . md5( $token );
 	}
 
 	public function handle_logout_cleanup() {

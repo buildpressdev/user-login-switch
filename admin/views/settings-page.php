@@ -4,6 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 $selected_roles = (array) ( $settings['target_roles'] ?? array() );
+$environment    = function_exists( 'wp_get_environment_type' ) ? wp_get_environment_type() : 'production';
 ?>
 <div class="wrap uls-settings-wrap">
 	<h1><?php esc_html_e( 'User Login Switch Settings', 'user-login-switch' ); ?></h1>
@@ -19,6 +20,15 @@ $selected_roles = (array) ( $settings['target_roles'] ?? array() );
 			<tr>
 				<th scope="row"><?php esc_html_e( 'Session timeout (minutes)', 'user-login-switch' ); ?></th>
 				<td><input type="number" min="5" max="1440" name="uls_settings[timeout_minutes]" value="<?php echo esc_attr( (int) $settings['timeout_minutes'] ); ?>" /></td>
+			</tr>
+			<tr>
+				<th scope="row"><?php esc_html_e( 'Guest quick login', 'user-login-switch' ); ?></th>
+				<td>
+					<label><input type="checkbox" name="uls_settings[enable_guest_quick_login]" value="1" <?php checked( ! empty( $settings['enable_guest_quick_login'] ) ); ?> /> <?php esc_html_e( 'Enable one-time quick login links for logged-out admins', 'user-login-switch' ); ?></label>
+					<p class="description"><?php echo esc_html( sprintf( __( 'Current environment: %s. Quick login is allowed by default only on local/development/staging.', 'user-login-switch' ), $environment ) ); ?></p>
+					<label><?php esc_html_e( 'Link TTL (minutes)', 'user-login-switch' ); ?> <input type="number" min="1" max="60" name="uls_settings[guest_quick_login_ttl]" value="<?php echo esc_attr( (int) $settings['guest_quick_login_ttl'] ); ?>" /></label>
+					<p class="description"><code>wp uls quick-login --user=admin</code></p>
+				</td>
 			</tr>
 			<tr>
 				<th scope="row"><?php esc_html_e( 'Initiator role', 'user-login-switch' ); ?></th>

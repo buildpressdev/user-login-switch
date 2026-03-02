@@ -8,6 +8,7 @@ require_once ULS_DIR . 'includes/class-uls-settings.php';
 require_once ULS_DIR . 'includes/class-uls-audit-log.php';
 require_once ULS_DIR . 'includes/class-uls-switch-manager.php';
 require_once ULS_DIR . 'includes/class-uls-admin-ui.php';
+require_once ULS_DIR . 'includes/class-uls-cli.php';
 
 class ULS_Plugin {
 	const OPTION_KEY = 'uls_settings';
@@ -17,6 +18,7 @@ class ULS_Plugin {
 	private $audit_log;
 	private $switch_manager;
 	private $admin_ui;
+	private $cli;
 
 	public static function instance() {
 		if ( null === self::$instance ) {
@@ -31,6 +33,7 @@ class ULS_Plugin {
 		$this->audit_log      = new ULS_Audit_Log();
 		$this->switch_manager = new ULS_Switch_Manager( $this->settings, $this->audit_log );
 		$this->admin_ui       = new ULS_Admin_UI( $this->settings, $this->switch_manager );
+		$this->cli            = new ULS_CLI( $this->switch_manager );
 
 		add_action( 'plugins_loaded', array( $this, 'boot' ) );
 	}
@@ -40,6 +43,7 @@ class ULS_Plugin {
 		$this->audit_log->register();
 		$this->switch_manager->register();
 		$this->admin_ui->register();
+		$this->cli->register();
 	}
 
 	public static function activate( $network_wide ) {
