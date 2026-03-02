@@ -16,8 +16,6 @@ class ULS_Settings {
 			'show_users_row_action' => 1,
 			'show_admin_bar'        => 1,
 			'show_admin_notice'     => 1,
-			'show_frontend_widget'  => 1,
-			'widget_position'       => 'left-center',
 			'style_preset'          => 'default',
 			'enable_audit_log'      => 1,
 			'log_retention_days'    => 90,
@@ -56,8 +54,6 @@ class ULS_Settings {
 			'show_users_row_action' => ! empty( $input['show_users_row_action'] ) ? 1 : 0,
 			'show_admin_bar'        => ! empty( $input['show_admin_bar'] ) ? 1 : 0,
 			'show_admin_notice'     => ! empty( $input['show_admin_notice'] ) ? 1 : 0,
-			'show_frontend_widget'  => ! empty( $input['show_frontend_widget'] ) ? 1 : 0,
-			'widget_position'       => sanitize_key( $input['widget_position'] ?? $defaults['widget_position'] ),
 			'style_preset'          => sanitize_key( $input['style_preset'] ?? $defaults['style_preset'] ),
 			'enable_audit_log'      => ! empty( $input['enable_audit_log'] ) ? 1 : 0,
 			'log_retention_days'    => max( 1, min( 3650, absint( $input['log_retention_days'] ?? $defaults['log_retention_days'] ) ) ),
@@ -66,10 +62,6 @@ class ULS_Settings {
 
 		if ( ! in_array( $output['style_preset'], array( 'default', 'compact', 'minimal' ), true ) ) {
 			$output['style_preset'] = 'default';
-		}
-
-		if ( ! in_array( $output['widget_position'], array( 'left-center', 'right-center', 'left-bottom', 'right-bottom' ), true ) ) {
-			$output['widget_position'] = 'left-center';
 		}
 
 		return $output;

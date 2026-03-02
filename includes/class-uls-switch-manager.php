@@ -22,7 +22,6 @@ class ULS_Switch_Manager {
 		add_action( 'admin_post_uls_return', array( $this, 'handle_return' ) );
 		add_action( 'admin_post_uls_quick_login', array( $this, 'handle_guest_quick_login' ) );
 		add_action( 'admin_post_nopriv_uls_quick_login', array( $this, 'handle_guest_quick_login' ) );
-		add_action( 'wp_ajax_uls_search_users', array( $this, 'ajax_search_users' ) );
 		add_action( 'clear_auth_cookie', array( $this, 'handle_logout_cleanup' ) );
 	}
 
@@ -510,73 +509,6 @@ class ULS_Switch_Manager {
 			$this->mark_token_inactive( $token );
 			self::clear_origin_cookie();
 		}
-	}
-
-	public function ajax_search_users() {
-		if ( $this->is_rate_limited( 'ajax_search_users', 120, 60 ) ) {
-			wp_send_json_error( array( 'message' => esc_html__( 'Too many search requests. Please wait and try again.', 'user-login-switch' ) ), 429 );
-		}
-
-		if ( ! $this->is_enabled() ) {
-			wp_send_json_error( array( 'message' => esc_html__( 'User switching is disabled.', 'user-login-switch' ) ), 403 );
-		}
-
-		check_ajax_referer( 'uls_frontend_search', 'nonce' );
-
-		if ( ! $this->can_initiate_switch() ) {
-			wp_send_json_error( array( 'message' => esc_html__( 'You are not allowed to switch users.', 'user-login-switch' ) ), 403 );
-		}
-
-		$search = isset( $_POST['search'] ) ? sanitize_text_field( wp_unslash( $_POST['search'] ) ) : '';
-		$users  = array();
-
-		if ( '' === $search ) {
-			$users = $this->get_recent_users( get_current_user_id() );
-
-			if ( empty( $users ) ) {
-				$query = new WP_User_Query(
-					array(
-						'number'  => 15,
-						'exclude' => array( get_current_user_id() ),
-						'orderby' => 'registered',
-						'order'   => 'DESC',
-					)
-				);
-
-				foreach ( (array) $query->get_results() as $user ) {
-					if ( ! $this->target_role_allowed( (int) $user->ID ) ) {
-						continue;
-					}
-
-					$users[] = $this->format_user_row( $user );
-				}
-			}
-		} else {
-			$query = new WP_User_Query(
-				array(
-					'number'         => 15,
-					'search'         => '*' . $search . '*',
-					'search_columns' => array( 'user_login', 'user_email', 'display_name', 'user_nicename' ),
-					'exclude'        => array( get_current_user_id() ),
-					'orderby'        => 'display_name',
-					'order'          => 'ASC',
-				)
-			);
-
-			foreach ( (array) $query->get_results() as $user ) {
-				if ( ! $this->target_role_allowed( (int) $user->ID ) ) {
-					continue;
-				}
-
-				$users[] = $this->format_user_row( $user );
-			}
-		}
-
-		wp_send_json_success(
-			array(
-				'users' => array_values( $users ),
-			)
-		);
 	}
 
 	private function format_user_row( $user ) {
