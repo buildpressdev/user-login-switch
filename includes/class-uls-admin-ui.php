@@ -159,6 +159,7 @@ class ULS_Admin_UI {
 				'search_label'   => esc_html__( 'Search users by name, email, or username', 'user-login-switch' ),
 				'empty_label'    => esc_html__( 'No users found.', 'user-login-switch' ),
 				'loading_label'  => esc_html__( 'Loading users...', 'user-login-switch' ),
+				'error_label'    => esc_html__( 'Could not load users. Please refresh and try again.', 'user-login-switch' ),
 				'no_access_text' => esc_html__( 'Search is disabled in switched mode. Use return to go back.', 'user-login-switch' ),
 			)
 		);

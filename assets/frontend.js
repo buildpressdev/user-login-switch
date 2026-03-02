@@ -16,6 +16,14 @@
   var list = root.querySelector('[data-uls-users]');
   var requestTimer = null;
 
+  function normalizeUrl(url) {
+    if (!url) {
+      return '';
+    }
+
+    return String(url).replace(/&amp;/g, '&');
+  }
+
   function setOpen(open) {
     modal.hidden = !open;
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -51,7 +59,7 @@
 
       var link = document.createElement('a');
       link.className = 'uls-widget__list-link';
-      link.href = user.switch_url;
+      link.href = normalizeUrl(user.switch_url);
 
       var name = document.createElement('span');
       name.className = 'uls-widget__name';
@@ -93,16 +101,29 @@
       method: 'POST',
       credentials: 'same-origin',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'X-Requested-With': 'XMLHttpRequest'
       },
       body: body.toString()
     })
       .then(function (response) {
-        return response.json();
+        return response.text();
       })
-      .then(function (json) {
+      .then(function (raw) {
+        var json;
+        try {
+          json = JSON.parse(raw);
+        } catch (e) {
+          setStatus(window.ulsFrontend.error_label || window.ulsFrontend.empty_label);
+          return;
+        }
+
         if (!json || !json.success || !json.data || !Array.isArray(json.data.users)) {
-          setStatus(window.ulsFrontend.empty_label);
+          if (json && json.data && json.data.message) {
+            setStatus(json.data.message);
+            return;
+          }
+          setStatus(window.ulsFrontend.error_label || window.ulsFrontend.empty_label);
           return;
         }
 

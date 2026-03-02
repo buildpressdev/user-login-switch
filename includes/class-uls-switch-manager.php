@@ -41,11 +41,15 @@ class ULS_Switch_Manager {
 			return false;
 		}
 
+		if ( is_super_admin( $user_id ) ) {
+			return true;
+		}
+
 		if ( ! user_can( $user, 'manage_options' ) ) {
 			return false;
 		}
 
-		return in_array( 'administrator', (array) $user->roles, true ) || is_super_admin( $user_id );
+		return in_array( 'administrator', (array) $user->roles, true );
 	}
 
 	public function target_role_allowed( $target_user_id ) {
@@ -337,12 +341,31 @@ class ULS_Switch_Manager {
 
 		if ( '' === $search ) {
 			$users = $this->get_recent_users( get_current_user_id() );
+
+			if ( empty( $users ) ) {
+				$query = new WP_User_Query(
+					array(
+						'number'  => 15,
+						'exclude' => array( get_current_user_id() ),
+						'orderby' => 'registered',
+						'order'   => 'DESC',
+					)
+				);
+
+				foreach ( (array) $query->get_results() as $user ) {
+					if ( ! $this->target_role_allowed( (int) $user->ID ) ) {
+						continue;
+					}
+
+					$users[] = $this->format_user_row( $user );
+				}
+			}
 		} else {
 			$query = new WP_User_Query(
 				array(
 					'number'         => 15,
 					'search'         => '*' . $search . '*',
-					'search_columns' => array( 'user_login', 'user_email', 'display_name' ),
+					'search_columns' => array( 'user_login', 'user_email', 'display_name', 'user_nicename' ),
 					'exclude'        => array( get_current_user_id() ),
 					'orderby'        => 'display_name',
 					'order'          => 'ASC',
@@ -368,6 +391,8 @@ class ULS_Switch_Manager {
 	private function format_user_row( $user ) {
 		$wp_roles = wp_roles();
 		$role     = '';
+		$url      = $this->switch_url( (int) $user->ID );
+		$url      = html_entity_decode( $url, ENT_QUOTES, 'UTF-8' );
 
 		if ( $wp_roles && ! empty( $user->roles ) ) {
 			$first_role = (string) reset( $user->roles );
@@ -384,7 +409,7 @@ class ULS_Switch_Manager {
 			'username'   => $user->user_login,
 			'email'      => $user->user_email,
 			'role'       => $role,
-			'switch_url' => $this->switch_url( (int) $user->ID ),
+			'switch_url' => $url,
 		);
 	}
 
