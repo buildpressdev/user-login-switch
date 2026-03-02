@@ -260,11 +260,45 @@ class ULS_Switch_Manager {
 		$this->track_recent_target( $origin_user_id, $target_user_id );
 		$this->audit_log->log( 'switch_started', 'success', $origin_user_id, $target_user_id, 'Switch successful.' );
 
-		$default_redirect = admin_url( 'profile.php?uls_switched=1' );
-		$safe_redirect    = wp_validate_redirect( $redirect_to, $default_redirect );
+		$safe_redirect = $this->resolve_switch_redirect( $redirect_to, $target_user );
 
 		wp_safe_redirect( $safe_redirect );
 		exit;
+	}
+
+	private function resolve_switch_redirect( $redirect_to, $target_user ) {
+		$home_redirect = home_url( '/' );
+		$admin_redirect = admin_url( 'profile.php?uls_switched=1' );
+		$target_is_admin = $this->can_initiate_switch( (int) $target_user->ID );
+
+		if ( '' === $redirect_to ) {
+			return $target_is_admin ? $admin_redirect : $home_redirect;
+		}
+
+		$safe_redirect = wp_validate_redirect( $redirect_to, $home_redirect );
+
+		if ( $this->is_admin_url( $safe_redirect ) && ! $target_is_admin ) {
+			return $home_redirect;
+		}
+
+		return $safe_redirect;
+	}
+
+	private function is_admin_url( $url ) {
+		if ( ! is_string( $url ) || '' === $url ) {
+			return false;
+		}
+
+		$admin_path = wp_parse_url( admin_url(), PHP_URL_PATH );
+		$url_path   = wp_parse_url( $url, PHP_URL_PATH );
+
+		if ( ! is_string( $admin_path ) || ! is_string( $url_path ) ) {
+			return false;
+		}
+
+		$admin_path = trailingslashit( $admin_path );
+
+		return 0 === strpos( trailingslashit( $url_path ), $admin_path );
 	}
 
 	public function handle_return() {
@@ -298,6 +332,11 @@ class ULS_Switch_Manager {
 	}
 
 	public function handle_guest_quick_login() {
+		if ( $this->is_rate_limited( 'quick_login', 20, 300 ) ) {
+			$this->audit_log->log( 'quick_login_failed', 'rate_limited', 0, null, 'Quick login endpoint rate limit hit.' );
+			wp_die( esc_html__( 'Too many quick login attempts. Try again in a few minutes.', 'user-login-switch' ) );
+		}
+
 		if ( ! $this->is_guest_quick_login_enabled() ) {
 			$this->audit_log->log( 'quick_login_failed', 'denied', 0, null, 'Guest quick login disabled.' );
 			wp_die( esc_html__( 'Quick login is disabled for this environment.', 'user-login-switch' ) );
@@ -474,6 +513,10 @@ class ULS_Switch_Manager {
 	}
 
 	public function ajax_search_users() {
+		if ( $this->is_rate_limited( 'ajax_search_users', 120, 60 ) ) {
+			wp_send_json_error( array( 'message' => esc_html__( 'Too many search requests. Please wait and try again.', 'user-login-switch' ) ), 429 );
+		}
+
 		if ( ! $this->is_enabled() ) {
 			wp_send_json_error( array( 'message' => esc_html__( 'User switching is disabled.', 'user-login-switch' ) ), 403 );
 		}
@@ -623,5 +666,51 @@ class ULS_Switch_Manager {
 		}
 
 		return $results;
+	}
+
+	private function is_rate_limited( $action, $limit, $window_seconds ) {
+		$limit          = max( 1, absint( $limit ) );
+		$window_seconds = max( 1, absint( $window_seconds ) );
+		$user_id        = get_current_user_id();
+		$ip_address     = $this->get_client_ip();
+		$identifier     = $user_id ? 'u:' . $user_id : 'ip:' . $ip_address;
+		$key            = 'uls_rl_' . md5( sanitize_key( $action ) . '|' . $identifier );
+
+		$state = get_transient( $key );
+
+		if ( ! is_array( $state ) || empty( $state['started_at'] ) ) {
+			$state = array(
+				'count'      => 0,
+				'started_at' => time(),
+			);
+		}
+
+		if ( ( time() - absint( $state['started_at'] ) ) >= $window_seconds ) {
+			$state = array(
+				'count'      => 0,
+				'started_at' => time(),
+			);
+		}
+
+		if ( absint( $state['count'] ) >= $limit ) {
+			return true;
+		}
+
+		$state['count'] = absint( $state['count'] ) + 1;
+		set_transient( $key, $state, $window_seconds );
+
+		return false;
+	}
+
+	private function get_client_ip() {
+		if ( isset( $_SERVER['REMOTE_ADDR'] ) ) {
+			$ip = sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) );
+
+			if ( '' !== $ip ) {
+				return $ip;
+			}
+		}
+
+		return 'unknown';
 	}
 }
