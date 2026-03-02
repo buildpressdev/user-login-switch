@@ -72,7 +72,52 @@ class ULS_Admin_UI {
 			return;
 		}
 
+		$can_switch = $this->switch_manager->can_initiate_switch();
 		$payload = $this->switch_manager->get_active_switch();
+
+		if ( ! $can_switch && ! $payload ) {
+			return;
+		}
+
+		if ( $can_switch ) {
+			$wp_admin_bar->add_node(
+				array(
+					'id'    => 'uls-quick-switch',
+					'title' => __( 'Quick Switch', 'user-login-switch' ),
+					'href'  => admin_url( 'users.php' ),
+				)
+			);
+
+			$recent_users = $this->switch_manager->get_recent_users( get_current_user_id() );
+
+			if ( ! empty( $recent_users ) ) {
+				foreach ( array_slice( $recent_users, 0, 8 ) as $recent_user ) {
+					$title = $recent_user['name'];
+
+					if ( ! empty( $recent_user['role'] ) ) {
+						$title .= ' (' . $recent_user['role'] . ')';
+					}
+
+					$wp_admin_bar->add_node(
+						array(
+							'id'     => 'uls-recent-' . (int) $recent_user['id'],
+							'parent' => 'uls-quick-switch',
+							'title'  => esc_html( $title ),
+							'href'   => esc_url( $recent_user['switch_url'] ),
+						)
+					);
+				}
+			}
+
+			$wp_admin_bar->add_node(
+				array(
+					'id'     => 'uls-manage-users',
+					'parent' => 'uls-quick-switch',
+					'title'  => __( 'Open Users Screen', 'user-login-switch' ),
+					'href'   => admin_url( 'users.php' ),
+				)
+			);
+		}
 
 		if ( ! $payload ) {
 			return;
