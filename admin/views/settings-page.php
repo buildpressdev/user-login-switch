@@ -55,7 +55,6 @@ $environment    = function_exists( 'wp_get_environment_type' ) ? wp_get_environm
 			<tr>
 				<th scope="row"><?php esc_html_e( 'UI placement', 'user-login-switch' ); ?></th>
 				<td>
-					<label><input type="checkbox" name="uls_settings[show_users_row_action]" value="1" <?php checked( ! empty( $settings['show_users_row_action'] ) ); ?> /> <?php esc_html_e( 'Users list row action', 'user-login-switch' ); ?></label><br />
 					<label><input type="checkbox" name="uls_settings[show_admin_bar]" value="1" <?php checked( ! empty( $settings['show_admin_bar'] ) ); ?> /> <?php esc_html_e( 'Admin bar return menu', 'user-login-switch' ); ?></label><br />
 					<label><input type="checkbox" name="uls_settings[show_admin_notice]" value="1" <?php checked( ! empty( $settings['show_admin_notice'] ) ); ?> /> <?php esc_html_e( 'Admin switched notice', 'user-login-switch' ); ?></label><br />
 					<label><input type="checkbox" name="uls_settings[show_frontend_widget]" value="1" <?php checked( ! empty( $settings['show_frontend_widget'] ) ); ?> /> <?php esc_html_e( 'Frontend switch widget', 'user-login-switch' ); ?></label>

@@ -15,12 +15,59 @@ class ULS_Admin_UI {
 
 	public function register() {
 		add_action( 'admin_menu', array( $this, 'register_settings_page' ) );
-		add_filter( 'user_row_actions', array( $this, 'add_user_row_action' ), 10, 2 );
+		add_filter( 'manage_users_columns', array( $this, 'add_quick_switch_column' ) );
+		add_filter( 'manage_users-network_columns', array( $this, 'add_quick_switch_column' ) );
+		add_filter( 'manage_users_custom_column', array( $this, 'render_quick_switch_column' ), 10, 3 );
+		add_filter( 'manage_users-network_custom_column', array( $this, 'render_quick_switch_column' ), 10, 3 );
 		add_action( 'admin_bar_menu', array( $this, 'add_admin_bar_menu' ), 999 );
 		add_action( 'admin_notices', array( $this, 'switched_notice' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_frontend_assets' ) );
 		add_action( 'wp_footer', array( $this, 'render_frontend_widget' ) );
+	}
+
+	public function add_quick_switch_column( $columns ) {
+		if ( ! $this->switch_manager->is_enabled() || ! $this->switch_manager->can_initiate_switch() ) {
+			return $columns;
+		}
+
+		$updated_columns = array();
+
+		foreach ( $columns as $key => $label ) {
+			$updated_columns[ $key ] = $label;
+
+			if ( 'username' === $key ) {
+				$updated_columns['uls_quick_switch'] = esc_html__( 'Quick Switch', 'user-login-switch' );
+			}
+		}
+
+		if ( ! isset( $updated_columns['uls_quick_switch'] ) ) {
+			$updated_columns['uls_quick_switch'] = esc_html__( 'Quick Switch', 'user-login-switch' );
+		}
+
+		return $updated_columns;
+	}
+
+	public function render_quick_switch_column( $value, $column_name, $user_id ) {
+		if ( 'uls_quick_switch' !== $column_name ) {
+			return $value;
+		}
+
+		if ( ! $this->switch_manager->is_enabled() || ! $this->switch_manager->can_initiate_switch() ) {
+			return '';
+		}
+
+		if ( get_current_user_id() === (int) $user_id || ! $this->switch_manager->target_role_allowed( (int) $user_id ) ) {
+			return '<span class="uls-switch-icon uls-switch-icon--disabled" aria-hidden="true"><span class="dashicons dashicons-randomize"></span></span>';
+		}
+
+		$url = $this->switch_manager->switch_url( (int) $user_id );
+
+		return sprintf(
+			'<a class="uls-switch-icon" href="%1$s" aria-label="%2$s" title="%2$s"><span class="dashicons dashicons-randomize" aria-hidden="true"></span></a>',
+			esc_url( $url ),
+			esc_attr__( 'Switch to this user', 'user-login-switch' )
+		);
 	}
 
 	public function register_settings_page() {
@@ -43,28 +90,6 @@ class ULS_Admin_UI {
 		$all_roles = $wp_roles ? (array) $wp_roles->roles : array();
 
 		require ULS_DIR . 'admin/views/settings-page.php';
-	}
-
-	public function add_user_row_action( $actions, $user ) {
-		if ( ! $this->switch_manager->is_enabled() || ! $this->settings->get( 'show_users_row_action' ) ) {
-			return $actions;
-		}
-
-		if ( ! $this->switch_manager->can_initiate_switch() ) {
-			return $actions;
-		}
-
-		if ( get_current_user_id() === (int) $user->ID ) {
-			return $actions;
-		}
-
-		if ( ! $this->switch_manager->target_role_allowed( (int) $user->ID ) ) {
-			return $actions;
-		}
-
-		$actions['uls_switch'] = '<a class="uls-switch-link" href="' . esc_url( $this->switch_manager->switch_url( (int) $user->ID ) ) . '">' . esc_html__( 'Switch To', 'user-login-switch' ) . '</a>';
-
-		return $actions;
 	}
 
 	public function add_admin_bar_menu( $wp_admin_bar ) {
