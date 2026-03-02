@@ -1,10 +1,10 @@
 .uls-widget {
-	--uls-primary: var(--wp--preset--color--primary, #0f5c8d);
-	--uls-primary-strong: #0b476d;
+	--uls-primary: #111827;
+	--uls-primary-strong: #0b1220;
 	--uls-cta-bg: #0a4a73;
 	--uls-cta-hover: #083a5a;
-	--uls-surface: var(--wp--preset--color--base, #ffffff);
-	--uls-text: var(--wp--preset--color--contrast, #1f2933);
+	--uls-surface: #ffffff;
+	--uls-text: #1f2933;
 	--uls-muted: #66727f;
 	--uls-border: #d7dee6;
 	--uls-shadow: 0 12px 28px rgba(16, 24, 40, 0.18);
@@ -39,13 +39,17 @@
 	justify-content: center;
 	width: 32px;
 	height: 32px;
-	border: 0;
+	border: 1px solid #ffffff;
 	border-radius: 999px;
 	background: linear-gradient(160deg, var(--uls-primary) 0%, var(--uls-primary-strong) 100%);
 	color: #fff;
-	box-shadow: 0 8px 18px rgba(11, 71, 109, 0.33);
+	box-shadow: 0 8px 18px rgba(2, 6, 23, 0.42);
 	cursor: pointer;
 	transition: transform 0.16s ease;
+}
+
+.uls-widget__toggle .dashicons {
+	color: #fff;
 }
 
 .uls-widget__toggle:hover {
