@@ -142,6 +142,7 @@ class ULS_Admin_UI {
 			return;
 		}
 
+		wp_enqueue_style( 'dashicons' );
 		wp_enqueue_style( 'uls-frontend', ULS_URL . 'assets/frontend.css', array(), ULS_VERSION );
 		wp_enqueue_script( 'uls-frontend', ULS_URL . 'assets/frontend.js', array(), ULS_VERSION, true );
 
@@ -173,7 +174,7 @@ class ULS_Admin_UI {
 		?>
 		<div class="uls-widget uls-widget--<?php echo esc_attr( $position ); ?>" id="uls-widget-root">
 			<button class="uls-widget__toggle" type="button" aria-expanded="false" aria-controls="uls-widget-modal">
-				<span class="uls-widget__icon" aria-hidden="true">ULS</span>
+				<span class="uls-widget__icon dashicons dashicons-randomize" aria-hidden="true"></span>
 				<span class="screen-reader-text"><?php esc_html_e( 'Open user switcher', 'user-login-switch' ); ?></span>
 			</button>
 			<div class="uls-widget__modal" id="uls-widget-modal" hidden>
