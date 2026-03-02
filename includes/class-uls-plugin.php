@@ -32,7 +32,7 @@ class ULS_Plugin {
 		$this->settings       = new ULS_Settings();
 		$this->audit_log      = new ULS_Audit_Log();
 		$this->switch_manager = new ULS_Switch_Manager( $this->settings, $this->audit_log );
-		$this->admin_ui       = new ULS_Admin_UI( $this->settings, $this->switch_manager );
+		$this->admin_ui       = new ULS_Admin_UI( $this->settings, $this->switch_manager, $this->audit_log );
 		$this->cli            = new ULS_CLI( $this->switch_manager );
 
 		add_action( 'plugins_loaded', array( $this, 'boot' ) );

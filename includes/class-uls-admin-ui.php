@@ -7,14 +7,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ULS_Admin_UI {
 	private $settings;
 	private $switch_manager;
+	private $audit_log;
 
-	public function __construct( ULS_Settings $settings, ULS_Switch_Manager $switch_manager ) {
+	public function __construct( ULS_Settings $settings, ULS_Switch_Manager $switch_manager, ULS_Audit_Log $audit_log ) {
 		$this->settings       = $settings;
 		$this->switch_manager = $switch_manager;
+		$this->audit_log      = $audit_log;
 	}
 
 	public function register() {
 		add_action( 'admin_menu', array( $this, 'register_settings_page' ) );
+		add_action( 'admin_post_uls_export_audit_csv', array( $this, 'handle_audit_csv_export' ) );
+		add_action( 'admin_post_uls_prune_audit_logs', array( $this, 'handle_audit_prune' ) );
 		add_filter( 'manage_users_columns', array( $this, 'add_quick_switch_column' ) );
 		add_filter( 'manage_users-network_columns', array( $this, 'add_quick_switch_column' ) );
 		add_filter( 'manage_users_custom_column', array( $this, 'render_quick_switch_column' ), 10, 3 );
@@ -78,6 +82,15 @@ class ULS_Admin_UI {
 			'user-login-switch',
 			array( $this, 'render_settings_page' )
 		);
+
+		add_submenu_page(
+			'options-general.php',
+			__( 'User Switch Audit Log', 'user-login-switch' ),
+			__( 'Switch Audit Log', 'user-login-switch' ),
+			'manage_options',
+			'user-login-switch-audit',
+			array( $this, 'render_audit_log_page' )
+		);
 	}
 
 	public function render_settings_page() {
@@ -90,6 +103,99 @@ class ULS_Admin_UI {
 		$all_roles = $wp_roles ? (array) $wp_roles->roles : array();
 
 		require ULS_DIR . 'admin/views/settings-page.php';
+	}
+
+	public function render_audit_log_page() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		$filters = $this->read_audit_filters_from_request();
+		$total   = $this->audit_log->query_logs( $filters, true );
+
+		$per_page = max( 1, absint( $filters['per_page'] ) );
+		$pages    = max( 1, (int) ceil( $total / $per_page ) );
+
+		if ( $filters['page'] > $pages ) {
+			$filters['page'] = $pages;
+		}
+
+		$rows = $this->audit_log->query_logs( $filters, false );
+
+		require ULS_DIR . 'admin/views/audit-log-page.php';
+	}
+
+	public function handle_audit_csv_export() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You are not allowed to export logs.', 'user-login-switch' ) );
+		}
+
+		check_admin_referer( 'uls_export_audit_csv' );
+
+		$filters            = $this->read_audit_filters_from_request();
+		$filters['page']    = 1;
+		$filters['per_page'] = 200;
+
+		nocache_headers();
+		header( 'Content-Type: text/csv; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename=user-switch-audit-' . gmdate( 'Ymd-His' ) . '.csv' );
+
+		$output = fopen( 'php://output', 'w' );
+
+		if ( false === $output ) {
+			wp_die( esc_html__( 'Could not export CSV.', 'user-login-switch' ) );
+		}
+
+		fputcsv( $output, array( 'id', 'blog_id', 'actor_user_id', 'target_user_id', 'current_user_id', 'action', 'status', 'ip_address', 'user_agent', 'details', 'created_at_gmt' ) );
+
+		$batch_page = 1;
+
+		while ( $batch_page <= 50 ) {
+			$filters['page'] = $batch_page;
+			$rows            = $this->audit_log->query_logs( $filters, false );
+
+			if ( empty( $rows ) ) {
+				break;
+			}
+
+			foreach ( $rows as $row ) {
+				fputcsv(
+					$output,
+					array(
+						$row['id'],
+						$row['blog_id'],
+						$row['actor_user_id'],
+						$row['target_user_id'],
+						$row['current_user_id'],
+						$row['action'],
+						$row['status'],
+						$row['ip_address'],
+						$row['user_agent'],
+						$row['details'],
+						$row['created_at_gmt'],
+					)
+				);
+			}
+
+			++$batch_page;
+		}
+
+		fclose( $output );
+		exit;
+	}
+
+	public function handle_audit_prune() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You are not allowed to prune logs.', 'user-login-switch' ) );
+		}
+
+		check_admin_referer( 'uls_prune_audit_logs' );
+
+		$retain = max( 1, absint( $this->settings->get( 'log_retention_days' ) ) );
+		$this->audit_log->cleanup_by_days( $retain );
+
+		wp_safe_redirect( add_query_arg( 'uls_logs_pruned', '1', admin_url( 'options-general.php?page=user-login-switch-audit' ) ) );
+		exit;
 	}
 
 	public function add_admin_bar_menu( $wp_admin_bar ) {
@@ -197,7 +303,7 @@ class ULS_Admin_UI {
 			return;
 		}
 
-		$load = ( 'users' === $screen->id || 'settings_page_user-login-switch' === $screen->id );
+		$load = in_array( $screen->id, array( 'users', 'settings_page_user-login-switch', 'settings_page_user-login-switch-audit' ), true );
 
 		if ( ! $load ) {
 			return;
@@ -296,5 +402,18 @@ class ULS_Admin_UI {
 		}
 
 		return $this->switch_manager->can_initiate_switch() || $this->switch_manager->is_switched();
+	}
+
+	private function read_audit_filters_from_request() {
+		return array(
+			'action'    => isset( $_GET['action_filter'] ) ? sanitize_key( wp_unslash( $_GET['action_filter'] ) ) : '',
+			'status'    => isset( $_GET['status_filter'] ) ? sanitize_key( wp_unslash( $_GET['status_filter'] ) ) : '',
+			'actor'     => isset( $_GET['actor_filter'] ) ? sanitize_text_field( wp_unslash( $_GET['actor_filter'] ) ) : '',
+			'target'    => isset( $_GET['target_filter'] ) ? sanitize_text_field( wp_unslash( $_GET['target_filter'] ) ) : '',
+			'date_from' => isset( $_GET['date_from'] ) ? sanitize_text_field( wp_unslash( $_GET['date_from'] ) ) : '',
+			'date_to'   => isset( $_GET['date_to'] ) ? sanitize_text_field( wp_unslash( $_GET['date_to'] ) ) : '',
+			'page'      => isset( $_GET['paged'] ) ? max( 1, absint( $_GET['paged'] ) ) : 1,
+			'per_page'  => isset( $_GET['per_page'] ) ? max( 10, min( 200, absint( $_GET['per_page'] ) ) ) : 20,
+		);
 	}
 }

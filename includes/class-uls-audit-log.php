@@ -5,6 +5,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class ULS_Audit_Log {
+	const DEFAULT_PER_PAGE = 20;
+
 	public function register() {
 		add_action( 'uls_cleanup_logs', array( $this, 'cleanup' ) );
 	}
@@ -88,12 +90,115 @@ class ULS_Audit_Log {
 	public function cleanup() {
 		$settings = wp_parse_args( (array) get_option( ULS_Settings::OPTION_KEY, array() ), ULS_Settings::defaults() );
 		$retain   = max( 1, absint( $settings['log_retention_days'] ?? 90 ) );
+		$this->cleanup_by_days( $retain );
+	}
+
+	public function cleanup_by_days( $retain_days ) {
+		$retain_days = max( 1, absint( $retain_days ) );
 
 		global $wpdb;
 
 		$table_name = self::table_name();
-		$cutoff     = gmdate( 'Y-m-d H:i:s', time() - DAY_IN_SECONDS * $retain );
+		$cutoff     = gmdate( 'Y-m-d H:i:s', time() - DAY_IN_SECONDS * $retain_days );
 
 		$wpdb->query( $wpdb->prepare( "DELETE FROM {$table_name} WHERE created_at_gmt < %s", $cutoff ) );
+	}
+
+	public function query_logs( $filters = array(), $count_only = false ) {
+		global $wpdb;
+
+		$defaults = array(
+			'action'    => '',
+			'status'    => '',
+			'actor'     => '',
+			'target'    => '',
+			'date_from' => '',
+			'date_to'   => '',
+			'page'      => 1,
+			'per_page'  => self::DEFAULT_PER_PAGE,
+		);
+
+		$filters = wp_parse_args( $filters, $defaults );
+		$where   = array( '1=1' );
+		$params  = array();
+
+		if ( '' !== $filters['action'] ) {
+			$where[]  = 'action = %s';
+			$params[] = sanitize_key( $filters['action'] );
+		}
+
+		if ( '' !== $filters['status'] ) {
+			$where[]  = 'status = %s';
+			$params[] = sanitize_key( $filters['status'] );
+		}
+
+		$this->append_user_filter( $where, $params, 'actor_user_id', $filters['actor'] );
+		$this->append_user_filter( $where, $params, 'target_user_id', $filters['target'] );
+
+		if ( $this->is_valid_date_input( $filters['date_from'] ) ) {
+			$where[]  = 'created_at_gmt >= %s';
+			$params[] = gmdate( 'Y-m-d 00:00:00', strtotime( $filters['date_from'] ) );
+		}
+
+		if ( $this->is_valid_date_input( $filters['date_to'] ) ) {
+			$where[]  = 'created_at_gmt <= %s';
+			$params[] = gmdate( 'Y-m-d 23:59:59', strtotime( $filters['date_to'] ) );
+		}
+
+		$table_name = self::table_name();
+		$where_sql  = implode( ' AND ', $where );
+
+		if ( $count_only ) {
+			$sql = "SELECT COUNT(*) FROM {$table_name} WHERE {$where_sql}";
+
+			if ( ! empty( $params ) ) {
+				$sql = $wpdb->prepare( $sql, $params );
+			}
+
+			return (int) $wpdb->get_var( $sql );
+		}
+
+		$page     = max( 1, absint( $filters['page'] ) );
+		$per_page = max( 1, min( 200, absint( $filters['per_page'] ) ) );
+		$offset   = ( $page - 1 ) * $per_page;
+
+		$sql      = "SELECT * FROM {$table_name} WHERE {$where_sql} ORDER BY created_at_gmt DESC LIMIT %d OFFSET %d";
+		$params[] = $per_page;
+		$params[] = $offset;
+		$sql      = $wpdb->prepare( $sql, $params );
+
+		return (array) $wpdb->get_results( $sql, ARRAY_A );
+	}
+
+	private function append_user_filter( &$where, &$params, $column, $value ) {
+		$value = trim( (string) $value );
+
+		if ( '' === $value ) {
+			return;
+		}
+
+		global $wpdb;
+
+		if ( ctype_digit( $value ) ) {
+			$where[]  = "{$column} = %d";
+			$params[] = absint( $value );
+			return;
+		}
+
+		$like      = '%' . $wpdb->esc_like( sanitize_text_field( $value ) ) . '%';
+		$where[]   = "{$column} IN (SELECT ID FROM {$wpdb->users} WHERE user_login LIKE %s OR display_name LIKE %s OR user_email LIKE %s)";
+		$params[]  = $like;
+		$params[]  = $like;
+		$params[]  = $like;
+	}
+
+	private function is_valid_date_input( $input ) {
+		if ( ! is_string( $input ) || '' === $input ) {
+			return false;
+		}
+
+		$timestamp = strtotime( $input );
+
+		return false !== $timestamp;
 	}
 }
