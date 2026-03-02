@@ -19,6 +19,8 @@ class ULS_Admin_UI {
 		add_action( 'admin_bar_menu', array( $this, 'add_admin_bar_menu' ), 999 );
 		add_action( 'admin_notices', array( $this, 'switched_notice' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_frontend_assets' ) );
+		add_action( 'wp_footer', array( $this, 'render_frontend_widget' ) );
 	}
 
 	public function register_settings_page() {
@@ -135,6 +137,69 @@ class ULS_Admin_UI {
 		wp_add_inline_style( 'uls-admin', $this->style_css() );
 	}
 
+	public function enqueue_frontend_assets() {
+		if ( ! $this->can_show_frontend_widget() ) {
+			return;
+		}
+
+		wp_enqueue_style( 'uls-frontend', ULS_URL . 'assets/frontend.css', array(), ULS_VERSION );
+		wp_enqueue_script( 'uls-frontend', ULS_URL . 'assets/frontend.js', array(), ULS_VERSION, true );
+
+		wp_localize_script(
+			'uls-frontend',
+			'ulsFrontend',
+			array(
+				'ajax_url'       => admin_url( 'admin-ajax.php' ),
+				'nonce'          => wp_create_nonce( 'uls_frontend_search' ),
+				'can_search'     => $this->switch_manager->can_initiate_switch(),
+				'is_switched'    => $this->switch_manager->is_switched(),
+				'return_url'     => $this->switch_manager->return_url(),
+				'position'       => $this->settings->get( 'widget_position' ),
+				'search_label'   => esc_html__( 'Search users by name, email, or username', 'user-login-switch' ),
+				'empty_label'    => esc_html__( 'No users found.', 'user-login-switch' ),
+				'loading_label'  => esc_html__( 'Loading users...', 'user-login-switch' ),
+				'no_access_text' => esc_html__( 'Search is disabled in switched mode. Use return to go back.', 'user-login-switch' ),
+			)
+		);
+	}
+
+	public function render_frontend_widget() {
+		if ( ! $this->can_show_frontend_widget() ) {
+			return;
+		}
+
+		$position  = sanitize_html_class( $this->settings->get( 'widget_position' ) );
+		$is_active = $this->switch_manager->is_switched();
+		?>
+		<div class="uls-widget uls-widget--<?php echo esc_attr( $position ); ?>" id="uls-widget-root">
+			<button class="uls-widget__toggle" type="button" aria-expanded="false" aria-controls="uls-widget-modal">
+				<span class="uls-widget__icon" aria-hidden="true">ULS</span>
+				<span class="screen-reader-text"><?php esc_html_e( 'Open user switcher', 'user-login-switch' ); ?></span>
+			</button>
+			<div class="uls-widget__modal" id="uls-widget-modal" hidden>
+				<div class="uls-widget__head">
+					<strong><?php esc_html_e( 'Quick User Switch', 'user-login-switch' ); ?></strong>
+					<button class="uls-widget__close" type="button" aria-label="<?php esc_attr_e( 'Close', 'user-login-switch' ); ?>">&times;</button>
+				</div>
+				<div class="uls-widget__body">
+					<?php if ( $this->switch_manager->can_initiate_switch() ) : ?>
+						<label class="screen-reader-text" for="uls-user-search"><?php esc_html_e( 'Search users', 'user-login-switch' ); ?></label>
+						<input id="uls-user-search" class="uls-widget__search" type="search" autocomplete="off" placeholder="<?php esc_attr_e( 'Search users by name, email, username', 'user-login-switch' ); ?>" />
+						<div class="uls-widget__status" data-uls-status><?php esc_html_e( 'Loading users...', 'user-login-switch' ); ?></div>
+						<ul class="uls-widget__list" data-uls-users></ul>
+					<?php else : ?>
+						<p class="uls-widget__status"><?php esc_html_e( 'Search is disabled in switched mode. Use return to go back.', 'user-login-switch' ); ?></p>
+					<?php endif; ?>
+
+					<?php if ( $is_active ) : ?>
+						<p class="uls-widget__return-wrap"><a class="uls-widget__return" href="<?php echo esc_url( $this->switch_manager->return_url() ); ?>"><?php esc_html_e( 'Return to Original Admin', 'user-login-switch' ); ?></a></p>
+					<?php endif; ?>
+				</div>
+			</div>
+		</div>
+		<?php
+	}
+
 	private function style_css() {
 		$preset = $this->settings->get( 'style_preset' );
 
@@ -147,5 +212,17 @@ class ULS_Admin_UI {
 		}
 
 		return '.uls-switch-link{padding:2px 8px;border-radius:999px;background:#007cba;color:#fff !important;}';
+	}
+
+	private function can_show_frontend_widget() {
+		if ( is_admin() || ! is_user_logged_in() ) {
+			return false;
+		}
+
+		if ( ! $this->switch_manager->is_enabled() || ! $this->settings->get( 'show_frontend_widget' ) ) {
+			return false;
+		}
+
+		return $this->switch_manager->can_initiate_switch() || $this->switch_manager->is_switched();
 	}
 }

@@ -7,6 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ULS_Switch_Manager {
 	const COOKIE_NAME = 'uls_origin_token';
 	const ACTION_KEY  = 'uls_switch_action';
+	const RECENT_KEY   = 'uls_recent_targets_';
 
 	private $settings;
 	private $audit_log;
@@ -19,6 +20,8 @@ class ULS_Switch_Manager {
 	public function register() {
 		add_action( 'admin_post_uls_switch', array( $this, 'handle_switch' ) );
 		add_action( 'admin_post_uls_return', array( $this, 'handle_return' ) );
+		add_action( 'wp_ajax_uls_search_users', array( $this, 'ajax_search_users' ) );
+		add_action( 'clear_auth_cookie', array( $this, 'handle_logout_cleanup' ) );
 	}
 
 	public function is_enabled() {
@@ -166,6 +169,7 @@ class ULS_Switch_Manager {
 		do_action( 'wp_login', $target_user->user_login, $target_user );
 
 		$this->set_cookie_token( $token );
+		$this->track_recent_target( $origin_user_id, $target_user_id );
 		$this->audit_log->log( 'switch_started', 'success', $origin_user_id, $target_user_id, 'Switch successful.' );
 
 		wp_safe_redirect( admin_url( 'profile.php?uls_switched=1' ) );
@@ -306,5 +310,145 @@ class ULS_Switch_Manager {
 
 	private function transient_key( $token ) {
 		return 'uls_token_' . md5( $token );
+	}
+
+	public function handle_logout_cleanup() {
+		$token = $this->read_cookie_token();
+
+		if ( $token ) {
+			$this->mark_token_inactive( $token );
+			self::clear_origin_cookie();
+		}
+	}
+
+	public function ajax_search_users() {
+		if ( ! $this->is_enabled() ) {
+			wp_send_json_error( array( 'message' => esc_html__( 'User switching is disabled.', 'user-login-switch' ) ), 403 );
+		}
+
+		check_ajax_referer( 'uls_frontend_search', 'nonce' );
+
+		if ( ! $this->can_initiate_switch() ) {
+			wp_send_json_error( array( 'message' => esc_html__( 'You are not allowed to switch users.', 'user-login-switch' ) ), 403 );
+		}
+
+		$search = isset( $_POST['search'] ) ? sanitize_text_field( wp_unslash( $_POST['search'] ) ) : '';
+		$users  = array();
+
+		if ( '' === $search ) {
+			$users = $this->get_recent_users( get_current_user_id() );
+		} else {
+			$query = new WP_User_Query(
+				array(
+					'number'         => 15,
+					'search'         => '*' . $search . '*',
+					'search_columns' => array( 'user_login', 'user_email', 'display_name' ),
+					'exclude'        => array( get_current_user_id() ),
+					'orderby'        => 'display_name',
+					'order'          => 'ASC',
+				)
+			);
+
+			foreach ( (array) $query->get_results() as $user ) {
+				if ( ! $this->target_role_allowed( (int) $user->ID ) ) {
+					continue;
+				}
+
+				$users[] = $this->format_user_row( $user );
+			}
+		}
+
+		wp_send_json_success(
+			array(
+				'users' => array_values( $users ),
+			)
+		);
+	}
+
+	private function format_user_row( $user ) {
+		$wp_roles = wp_roles();
+		$role     = '';
+
+		if ( $wp_roles && ! empty( $user->roles ) ) {
+			$first_role = (string) reset( $user->roles );
+			$role_data  = $wp_roles->roles[ $first_role ] ?? null;
+
+			if ( is_array( $role_data ) && ! empty( $role_data['name'] ) ) {
+				$role = translate_user_role( $role_data['name'] );
+			}
+		}
+
+		return array(
+			'id'         => (int) $user->ID,
+			'name'       => $user->display_name ? $user->display_name : $user->user_login,
+			'username'   => $user->user_login,
+			'email'      => $user->user_email,
+			'role'       => $role,
+			'switch_url' => $this->switch_url( (int) $user->ID ),
+		);
+	}
+
+	private function recent_meta_key() {
+		return self::RECENT_KEY . get_current_blog_id();
+	}
+
+	private function track_recent_target( $origin_user_id, $target_user_id ) {
+		$key    = $this->recent_meta_key();
+		$recent = get_user_meta( $origin_user_id, $key, true );
+
+		if ( ! is_array( $recent ) ) {
+			$recent = array();
+		}
+
+		$target_user_id = (int) $target_user_id;
+
+		if ( empty( $recent[ $target_user_id ] ) ) {
+			$recent[ $target_user_id ] = array(
+				'count'     => 0,
+				'last_used' => 0,
+			);
+		}
+
+		$recent[ $target_user_id ]['count']     = absint( $recent[ $target_user_id ]['count'] ) + 1;
+		$recent[ $target_user_id ]['last_used'] = time();
+
+		update_user_meta( $origin_user_id, $key, $recent );
+	}
+
+	public function get_recent_users( $origin_user_id ) {
+		$key    = $this->recent_meta_key();
+		$recent = get_user_meta( absint( $origin_user_id ), $key, true );
+
+		if ( ! is_array( $recent ) ) {
+			return array();
+		}
+
+		uasort(
+			$recent,
+			static function ( $a, $b ) {
+				$count_a = absint( $a['count'] ?? 0 );
+				$count_b = absint( $b['count'] ?? 0 );
+
+				if ( $count_a === $count_b ) {
+					return absint( $b['last_used'] ?? 0 ) <=> absint( $a['last_used'] ?? 0 );
+				}
+
+				return $count_b <=> $count_a;
+			}
+		);
+
+		$results = array();
+
+		foreach ( array_slice( array_keys( $recent ), 0, 10 ) as $target_user_id ) {
+			$user = get_user_by( 'id', (int) $target_user_id );
+
+			if ( ! $user || ! $this->target_role_allowed( (int) $target_user_id ) ) {
+				continue;
+			}
+
+			$results[] = $this->format_user_row( $user );
+		}
+
+		return $results;
 	}
 }

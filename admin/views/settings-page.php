@@ -47,7 +47,17 @@ $selected_roles = (array) ( $settings['target_roles'] ?? array() );
 				<td>
 					<label><input type="checkbox" name="uls_settings[show_users_row_action]" value="1" <?php checked( ! empty( $settings['show_users_row_action'] ) ); ?> /> <?php esc_html_e( 'Users list row action', 'user-login-switch' ); ?></label><br />
 					<label><input type="checkbox" name="uls_settings[show_admin_bar]" value="1" <?php checked( ! empty( $settings['show_admin_bar'] ) ); ?> /> <?php esc_html_e( 'Admin bar return menu', 'user-login-switch' ); ?></label><br />
-					<label><input type="checkbox" name="uls_settings[show_admin_notice]" value="1" <?php checked( ! empty( $settings['show_admin_notice'] ) ); ?> /> <?php esc_html_e( 'Admin switched notice', 'user-login-switch' ); ?></label>
+					<label><input type="checkbox" name="uls_settings[show_admin_notice]" value="1" <?php checked( ! empty( $settings['show_admin_notice'] ) ); ?> /> <?php esc_html_e( 'Admin switched notice', 'user-login-switch' ); ?></label><br />
+					<label><input type="checkbox" name="uls_settings[show_frontend_widget]" value="1" <?php checked( ! empty( $settings['show_frontend_widget'] ) ); ?> /> <?php esc_html_e( 'Frontend switch widget', 'user-login-switch' ); ?></label>
+					<p>
+						<label for="uls-widget-position"><?php esc_html_e( 'Widget position', 'user-login-switch' ); ?></label>
+						<select id="uls-widget-position" name="uls_settings[widget_position]">
+							<option value="left-center" <?php selected( 'left-center', $settings['widget_position'] ?? 'left-center' ); ?>><?php esc_html_e( 'Left Center', 'user-login-switch' ); ?></option>
+							<option value="right-center" <?php selected( 'right-center', $settings['widget_position'] ?? '' ); ?>><?php esc_html_e( 'Right Center', 'user-login-switch' ); ?></option>
+							<option value="left-bottom" <?php selected( 'left-bottom', $settings['widget_position'] ?? '' ); ?>><?php esc_html_e( 'Left Bottom', 'user-login-switch' ); ?></option>
+							<option value="right-bottom" <?php selected( 'right-bottom', $settings['widget_position'] ?? '' ); ?>><?php esc_html_e( 'Right Bottom', 'user-login-switch' ); ?></option>
+						</select>
+					</p>
 				</td>
 			</tr>
 			<tr>
