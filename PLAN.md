@@ -41,6 +41,13 @@ This plan is refined for WordPress Plugin Directory standards.
 - No heavy queries on every admin page load.
 - Limit logging and cleanup work (scheduled daily).
 
+### Backward compatibility
+- Define minimum supported versions and enforce them in docs and code.
+- Initial baseline: WordPress `6.0+` and PHP `7.4+`.
+- Avoid newer APIs without compatibility guards/fallbacks.
+- On unsupported environments, fail gracefully with admin notice (no fatal errors).
+- Keep schema/settings upgrades idempotent for safe updates from older plugin versions.
+
 ### Plugin directory expectations
 - Include standard `readme.txt` format.
 - Avoid trademark misuse and misleading naming.
@@ -136,6 +143,7 @@ user-login-switch/
 6. Add nonce and capability checks for every settings-side action (including log clear action if added).
 7. Add privacy disclosure text for audit fields.
 8. Add compatibility testing notes: latest WP + PHP versions.
+9. Add backward compatibility matrix and minimum version policy in docs.
 
 ## 10) Implementation Phases
 
@@ -152,6 +160,11 @@ user-login-switch/
 - Manual test matrix for single-site and multisite.
 - Prepare release tag and changelog.
 
+### Phase 4 - Compatibility verification
+- Validate on minimum supported WordPress and PHP versions.
+- Validate upgrade path from older plugin versions (settings and audit table).
+- Add guards for unavailable functions/constants and test graceful degradation.
+
 ## 11) Acceptance Criteria
 
 - Admin can switch to any user in one click.
@@ -162,6 +175,7 @@ user-login-switch/
 - Plugin works in single-site and multisite.
 - Settings persist and safely control behavior.
 - Packaging/docs meet WordPress.org expectations.
+- Plugin runs without fatal errors on minimum supported WP/PHP versions.
 
 ## 12) Quick Submission Checklist
 
@@ -171,3 +185,4 @@ user-login-switch/
 - [ ] Privacy disclosure included.
 - [ ] No PHP warnings/notices on debug mode.
 - [ ] Tested on current WP and supported PHP versions.
+- [ ] Minimum supported WordPress/PHP versions documented and verified.

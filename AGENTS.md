@@ -25,6 +25,14 @@ Guidance for AI/code agents contributing to this plugin.
 - Keep code ASCII unless file already uses Unicode.
 - Add comments only when logic is non-obvious.
 
+## Backward compatibility policy
+
+- Keep compatibility with minimum baseline: WordPress `6.0+`, PHP `7.4+`.
+- Do not introduce language features above PHP 7.4 syntax.
+- When using newer WordPress APIs, add fallback paths or guards.
+- Never ship changes that fatal on unsupported environments; fail gracefully with admin notice.
+- Keep option/table migrations idempotent and safe for upgrade from older plugin versions.
+
 ## Security checklist for every change
 
 - Capability check present (`manage_options` + admin constraints).
@@ -54,6 +62,7 @@ When code changes are made, verify at minimum:
 - Admin switch -> target user -> return flow.
 - Invalid nonce/capability denial paths.
 - Multisite activation path does not fatal.
+- Basic smoke test on minimum supported WP/PHP environment when changes affect runtime behavior.
 
 ## Commit guidance
 
